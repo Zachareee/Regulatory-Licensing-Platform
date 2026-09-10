@@ -1,0 +1,1305 @@
+{
+  "info": {
+    "_postman_id": "9f3b6c2e-1234-4a3a-9a0a-regulatory-collection",
+    "name": "Regulatory & Licensing Platform API",
+    "description": "End-to-end test collection for the Regulatory & Licensing Platform MVP.\n\nRun the whole collection top-to-bottom with the Collection Runner (or `newman run`) against a locally running server (`npm run dev`) to exercise the full application lifecycle: submission -> officer review -> pre-site resubmission -> site visit -> post-site clarification -> approval, plus the role-isolation and validation edge cases from PRD.md.\n\nEach request has test assertions (status code + key response fields) and several chain variables (applicationId, baseRevision, flaggedItemId, etc.) forward automatically via the environment, so requests must run in order within each folder.\n\nImport the accompanying `Regulatory-Licensing-Platform.postman_environment.json` and select it before running.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" }
+  ],
+  "item": [
+    {
+      "name": "00 - Health",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Reports ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - UC1 Submission & Role Isolation",
+      "item": [
+        {
+          "name": "Create application - missing auth headers -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401', function () { pm.response.to.have.status(401); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sections\": {\n    \"business_info\": { \"legalName\": \"Acme Trading Pte Ltd\" },\n    \"ownership\": { \"owners\": [\"Jane Doe\"] },\n    \"financials\": { \"annualRevenue\": 500000 },\n    \"premises\": { \"address\": \"1 Example Rd\" }\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] }
+          }
+        },
+        {
+          "name": "Create application - as OFFICER -> 403 (wrong role)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sections\": {\n    \"business_info\": {},\n    \"ownership\": {},\n    \"financials\": {},\n    \"premises\": {}\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] }
+          }
+        },
+        {
+          "name": "Create application - incomplete sections -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sections\": {\n    \"business_info\": { \"legalName\": \"Acme Trading Pte Ltd\" }\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] }
+          }
+        },
+        {
+          "name": "Create application - valid -> 201, status 'Submitted'",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Operator sees mapped label \"Submitted\", never the internal enum', function () {",
+                  "  pm.expect(json.status).to.eql('Submitted');",
+                  "  pm.expect(JSON.stringify(json)).to.not.include('APPLICATION_RECEIVED');",
+                  "});",
+                  "pm.test('Operator view omits internal-only fields', function () {",
+                  "  pm.expect(json.operatorId).to.be.undefined;",
+                  "  pm.expect(json.revisionHistory).to.be.undefined;",
+                  "});",
+                  "pm.environment.set('applicationId', json.id);",
+                  "pm.environment.set('baseRevision', json.currentRevision);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sections\": {\n    \"business_info\": { \"legalName\": \"Acme Trading Pte Ltd\" },\n    \"ownership\": { \"owners\": [\"Jane Doe\"] },\n    \"financials\": { \"annualRevenue\": 500000 },\n    \"premises\": { \"address\": \"1 Example Rd\" }\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] }
+          }
+        },
+        {
+          "name": "Get application - as a different operator -> 403, not a data leak",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403 (never 200, never a masked 404)', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{intruderOperatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get application - non-existent id -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () { pm.response.to.have.status(404); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "does-not-exist"]
+            }
+          }
+        },
+        {
+          "name": "Get application - as owning operator -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is Submitted', function () { pm.expect(pm.response.json().status).to.eql('Submitted'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get application - as officer -> sees officer label + operatorId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Officer sees \"Application Received\" label', function () { pm.expect(json.status).to.eql('Application Received'); });",
+                  "pm.test('Officer view includes operatorId', function () { pm.expect(json.operatorId).to.eql(pm.environment.get('operatorId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Upload a document - VERIFIED by default",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Mocked AI verification returns VERIFIED', function () { pm.expect(json.verificationStatus).to.eql('VERIFIED'); });",
+                  "pm.environment.set('documentId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sectionId\": \"financials\",\n  \"filename\": \"balance-sheet.pdf\",\n  \"mimeType\": \"application/pdf\",\n  \"sizeBytes\": 20480\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "documents"]
+            }
+          }
+        },
+        {
+          "name": "Upload a document - mocked as FLAGGED (blurry)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Mocked AI verification returns FLAGGED', function () { pm.expect(json.verificationStatus).to.eql('FLAGGED'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sectionId\": \"premises\",\n  \"filename\": \"floor-plan-scan.pdf\",\n  \"mimeType\": \"application/pdf\",\n  \"sizeBytes\": 20480,\n  \"mockContent\": \"BLURRY\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "documents"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - UC2 Officer Review & Feedback",
+      "item": [
+        {
+          "name": "Get comment templates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns a non-empty template list', function () { pm.expect(pm.response.json().length).to.be.above(0); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": { "raw": "{{baseUrl}}/comment-templates", "host": ["{{baseUrl}}"], "path": ["comment-templates"] }
+          }
+        },
+        {
+          "name": "Start review - as OPERATOR -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "start"]
+            }
+          }
+        },
+        {
+          "name": "Start review - as officer -> Under Review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is Under Review', function () { pm.expect(pm.response.json().status).to.eql('Under Review'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "start"]
+            }
+          }
+        },
+        {
+          "name": "Request changes - unknown section -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"targetType\": \"SECTION\", \"targetId\": \"not_a_real_section\", \"comment\": \"bad target\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/request-changes",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "request-changes"]
+            }
+          }
+        },
+        {
+          "name": "Request changes - flag 'financials' using a template -> Pending Pre-Site Resubmission",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Status is Pending Pre-Site Resubmission', function () { pm.expect(json.status).to.eql('Pending Pre-Site Resubmission'); });",
+                  "const financialsFeedback = json.feedback.find(f => f.targetId === 'financials');",
+                  "pm.test('Feedback recorded against the financials section', function () { pm.expect(financialsFeedback).to.not.be.undefined; });",
+                  "pm.environment.set('feedbackId', financialsFeedback.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"targetType\": \"SECTION\", \"targetId\": \"financials\", \"templateId\": \"info-incomplete\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/request-changes",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "request-changes"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - UC1 Resubmission (section-scoped)",
+      "item": [
+        {
+          "name": "Resubmit an UNFLAGGED section -> 400 (edge case)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseRevision\": {{baseRevision}},\n  \"sections\": { \"ownership\": { \"owners\": [\"Sneaky New Owner\"] } }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/sections",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "sections"]
+            }
+          }
+        },
+        {
+          "name": "Resubmit with a STALE revision number -> 409 (edge case)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409', function () { pm.response.to.have.status(409); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseRevision\": 2,\n  \"sections\": { \"financials\": { \"annualRevenue\": 1 } }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/sections",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "sections"]
+            }
+          }
+        },
+        {
+          "name": "Resubmit the flagged 'financials' section -> Pre-Site Resubmitted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Status is Pre-Site Resubmitted', function () { pm.expect(json.status).to.eql('Pre-Site Resubmitted'); });",
+                  "pm.test('Untouched sections carried forward unchanged (no data loss)', function () {",
+                  "  pm.expect(json.sections.business_info).to.eql({ legalName: 'Acme Trading Pte Ltd' });",
+                  "});",
+                  "pm.environment.set('baseRevision', json.currentRevision);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseRevision\": {{baseRevision}},\n  \"sections\": { \"financials\": { \"annualRevenue\": 750000 } }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/sections",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "sections"]
+            }
+          }
+        },
+        {
+          "name": "Compare revision 1 vs current -> changedSections includes 'financials'",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('financials is reported as changed', function () { pm.expect(json.changedSections).to.include('financials'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/compare?from=1&to={{baseRevision}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "compare"],
+              "query": [
+                { "key": "from", "value": "1" },
+                { "key": "to", "value": "{{baseRevision}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve the financials feedback item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Feedback is marked resolved', function () { pm.expect(pm.response.json().resolved).to.eql(true); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/feedback/{{feedbackId}}/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["feedback", "{{feedbackId}}", "resolve"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - UC2 Re-review & Schedule Site Visit",
+      "item": [
+        {
+          "name": "Officer re-starts review after resubmission -> Under Review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is Under Review', function () { pm.expect(pm.response.json().status).to.eql('Under Review'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "start"]
+            }
+          }
+        },
+        {
+          "name": "Schedule site visit -> operator sees 'Pending Site Visit'",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Officer label is Site Visit Scheduled', function () { pm.expect(pm.response.json().status).to.eql('Site Visit Scheduled'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/schedule-site-visit",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "schedule-site-visit"]
+            }
+          }
+        },
+        {
+          "name": "Confirm operator sees 'Pending Site Visit' (different label than officer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Operator label differs from officer label for the same internal status', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('Pending Site Visit');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - UC3 Site Visit Checklist & Post-Site Clarification",
+      "item": [
+        {
+          "name": "Operator tries to save a checklist -> 403 (officer-only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [ { \"label\": \"x\", \"officerComment\": \"y\", \"needsClarification\": false } ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/checklist",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "checklist"]
+            }
+          }
+        },
+        {
+          "name": "Officer saves checklist draft (1 item flagged, 1 clear)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Checklist is saved as DRAFT', function () { pm.expect(pm.response.json().state).to.eql('DRAFT'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"label\": \"Fire exits clear\", \"officerComment\": \"Blocked by storage boxes\", \"needsClarification\": true },\n    { \"label\": \"Signage present\", \"officerComment\": \"Looks good\", \"needsClarification\": false }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/checklist",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "checklist"]
+            }
+          }
+        },
+        {
+          "name": "Officer submits checklist -> Awaiting Post-Site Clarification (since 1 item flagged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is Awaiting Post-Site Clarification', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('Awaiting Post-Site Clarification');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/submit",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "submit"]
+            }
+          }
+        },
+        {
+          "name": "Operator sees ONLY the flagged item (never the full checklist)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Exactly one flagged item is visible', function () { pm.expect(json.length).to.eql(1); });",
+                  "pm.test('The clear item (\"Signage present\") is never returned', function () {",
+                  "  pm.expect(json.find(i => i.label === 'Signage present')).to.be.undefined;",
+                  "});",
+                  "pm.environment.set('flaggedItemId', json[0].id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/flagged-items",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "flagged-items"]
+            }
+          }
+        },
+        {
+          "name": "A different operator cannot view these flagged items -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{intruderOperatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/flagged-items",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "flagged-items"]
+            }
+          }
+        },
+        {
+          "name": "Officer tries to respond to a clarification item -> 403 (operator-only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemId\": \"{{flaggedItemId}}\",\n  \"response\": \"officers should not be able to do this\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/respond",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "respond"]
+            }
+          }
+        },
+        {
+          "name": "Operator responds to the flagged item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response is recorded', function () { pm.expect(pm.response.json().operatorResponse).to.include('removed'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemId\": \"{{flaggedItemId}}\",\n  \"response\": \"Boxes removed, exits now fully clear\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/respond",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "respond"]
+            }
+          }
+        },
+        {
+          "name": "Duplicate response to the same item -> 409 (edge case)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409', function () { pm.response.to.have.status(409); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemId\": \"{{flaggedItemId}}\",\n  \"response\": \"trying again\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/respond",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "respond"]
+            }
+          }
+        },
+        {
+          "name": "Confirm status moved to Post-Site Clarification Resubmitted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is Post-Site Clarification Resubmitted', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('Post-Site Clarification Resubmitted');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Officer accepts the response -> Route to Approval",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Officer-only internal-approval label is shown here', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('Route to Approval');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stillNeedsClarification\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/site-visit/review-responses",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "site-visit", "review-responses"]
+            }
+          }
+        },
+        {
+          "name": "Confirm operator NEVER sees 'Route to Approval' for the same state",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test('Operator sees the mapped label \"Pending Approval\"', function () { pm.expect(json.status).to.eql('Pending Approval'); });",
+                  "pm.test('The internal officer routing label never appears in the operator payload', function () {",
+                  "  pm.expect(JSON.stringify(json)).to.not.include('Route to Approval');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - UC2 Final Decision",
+      "item": [
+        {
+          "name": "Operator tries to approve -> 403 (officer-only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Officer approves -> Approved",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is Approved', function () { pm.expect(pm.response.json().status).to.eql('Approved'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Final operator view -> Approved",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Operator confirms Approved', function () { pm.expect(pm.response.json().status).to.eql('Approved'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Approve again from a terminal state -> 409 (edge case: no re-entering terminal states)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409', function () { pm.response.to.have.status(409); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/review/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{applicationId}}", "review", "approve"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Alternate Flow: Straight Rejection",
+      "item": [
+        {
+          "name": "Create a second application (for rejection flow)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('rejectAppId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{operatorId}}" },
+              { "key": "X-User-Role", "value": "OPERATOR" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sections\": {\n    \"business_info\": { \"legalName\": \"Ineligible Co\" },\n    \"ownership\": { \"owners\": [\"Someone\"] },\n    \"financials\": { \"annualRevenue\": 1 },\n    \"premises\": { \"address\": \"Nowhere\" }\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] }
+          }
+        },
+        {
+          "name": "Start review on the second application",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{rejectAppId}}/review/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{rejectAppId}}", "review", "start"]
+            }
+          }
+        },
+        {
+          "name": "Reject without a reason -> 400 (edge case: reason required)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{rejectAppId}}/review/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{rejectAppId}}", "review", "reject"]
+            }
+          }
+        },
+        {
+          "name": "Reject with a documented reason -> Rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is Rejected', function () { pm.expect(pm.response.json().status).to.eql('Rejected'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Id", "value": "{{officerId}}" },
+              { "key": "X-User-Role", "value": "OFFICER" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Business type not eligible for this licence class\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{rejectAppId}}/review/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "{{rejectAppId}}", "review", "reject"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -23,9 +23,16 @@ npm run build && npm start   # production build
 No database or external services required — everything runs in-memory out
 of the box (see "Architecture" below for why, and how it's swappable).
 
-### Trying it against a running server
+## Trying it against a running server
 
-Auth is mocked via headers (see SCOPE.md):
+You have two options:
+
+1. **Postman/Insomnia** (recommended for exploring): import
+   `postman/Regulatory-Licensing-Platform.postman_collection.json` — see
+   [postman/README.md](./postman/README.md). It runs 43 requests / 74
+   assertions covering the full lifecycle and every role-isolation edge
+   case, verified to pass 100% via Newman against a live instance.
+2. **curl**, using headers for the mocked auth (see SCOPE.md):
 
 ```bash
 # Operator submits an application
