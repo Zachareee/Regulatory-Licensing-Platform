@@ -13,11 +13,11 @@ assumption made where the brief was ambiguous.
 ## Quick start
 
 ```bash
-npm install
-npm test              # 84 tests, unit + integration (Jest + Supertest)
-npm run test:coverage # coverage report
-npm run dev           # runs the API on http://localhost:3000 with hot reload
-npm run build && npm start   # production build
+deno install
+deno test              # 84 tests, unit + integration (Jest + Supertest)
+deno task test:coverage # coverage report
+deno task dev          # runs the API on http://localhost:3000 with hot reload
+deno task build && deno task start   # production build
 ```
 
 No database or external services required — everything runs in-memory out
