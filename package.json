@@ -1,6 +1,7 @@
 {
   "name": "regulatory-licensing-platform",
   "version": "0.1.0",
+  "type": "module",
   "description": "MVP backend for a Regulatory & Licensing application lifecycle platform",
   "main": "dist/server.js",
   "scripts": {
@@ -21,7 +22,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.12",
-    "@types/node": "^20.14.9",
+    "@types/node": "^26.5.1",
     "@types/supertest": "^6.0.2",
     "@types/uuid": "^9.0.8",
     "jest": "^29.7.0",

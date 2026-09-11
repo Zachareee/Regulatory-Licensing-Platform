@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { DocumentRecord, SectionId } from '../domain/types';
 import { NotFoundError, ValidationError } from '../domain/errors';
 import { DocumentRepository, ApplicationRepository } from '../repositories/inMemoryStore';

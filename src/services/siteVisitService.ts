@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { Application, AuditEntry, ChecklistItem, Role, SiteVisitChecklist } from '../domain/types';
 import { assertValidTransition, InternalStatus } from '../domain/statusMachine';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors';
