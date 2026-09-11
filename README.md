@@ -135,21 +135,14 @@ state), so tests never leak into each other.
 
 - Swap the in-memory repositories for Postgres/Prisma behind the same
   interfaces — no service code would change.
-- Real file storage (S3-compatible) for documents instead of metadata-only
-  records.
 - A minimal operator/officer web UI consuming this API — the response
   shapes were designed to be UI-ready (role-correct labels, no client-side
   filtering required).
 - Pagination and filtering on `GET /applications` once case volume matters.
-- Configurable, licence-type-specific section and checklist schemas instead
-  of the fixed set assumed here.
-- Real notification delivery (email/SMS) off the existing `NOTIFICATION_SENT`
-  audit events, which already capture the right trigger points.
-- Idempotency keys on the mutating endpoints for safe client retries.
 
 ## AI Usage
 
-I used Claude (this session) to design and build this submission, working
+I used Claude to design and build this submission, working
 from the assessment document end to end:
 
 - **PRD & scoping**: I asked for a PRD and a repository with tests; the

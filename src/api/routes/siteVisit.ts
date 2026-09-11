@@ -43,7 +43,7 @@ export function buildSiteVisitRoutes(deps: {
   router.post(
     '/applications/:id/site-visit/checklist',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = draftSchema.parse(req.body);
       const checklist = deps.siteVisitService.saveDraft(req.params.id, req.user!.id, input.items);
       res.status(201).json(checklist);
@@ -53,7 +53,7 @@ export function buildSiteVisitRoutes(deps: {
   router.post(
     '/applications/:id/site-visit/submit',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const app = deps.siteVisitService.submitChecklist(req.params.id, req.user!.id);
       const documents = deps.documentService.listForApplication(app.id);
       const feedback = deps.reviewService.listFeedback(app.id);
@@ -64,7 +64,7 @@ export function buildSiteVisitRoutes(deps: {
   router.get(
     '/applications/:id/site-visit/flagged-items',
     requireRole('OPERATOR'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const items = deps.siteVisitService.getFlaggedItemsForOperator(req.params.id, req.user!.id);
       res.json(items);
     }),
@@ -73,7 +73,7 @@ export function buildSiteVisitRoutes(deps: {
   router.post(
     '/applications/:id/site-visit/respond',
     requireRole('OPERATOR'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = respondSchema.parse(req.body);
       const item = deps.siteVisitService.respondToClarification({
         applicationId: req.params.id,
@@ -88,7 +88,7 @@ export function buildSiteVisitRoutes(deps: {
   router.post(
     '/applications/:id/site-visit/review-responses',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = reviewResponsesSchema.parse(req.body);
       const app = deps.siteVisitService.reviewClarificationResponses(
         req.params.id,

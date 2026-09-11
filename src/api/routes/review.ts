@@ -32,7 +32,7 @@ export function buildReviewRoutes(deps: {
 
   router.get(
     '/comment-templates',
-    asyncHandler(async (_req, res) => {
+    asyncHandler((_req, res) => {
       res.json(COMMENT_TEMPLATES);
     }),
   );
@@ -40,7 +40,7 @@ export function buildReviewRoutes(deps: {
   router.post(
     '/applications/:id/review/start',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const app = deps.reviewService.startReview(req.params.id, req.user!.id);
       res.json(respond(deps, app, req.user!.role));
     }),
@@ -49,7 +49,7 @@ export function buildReviewRoutes(deps: {
   router.post(
     '/applications/:id/review/request-changes',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = requestChangesSchema.parse(req.body);
       const app = deps.reviewService.requestChanges({
         applicationId: req.params.id,
@@ -63,7 +63,7 @@ export function buildReviewRoutes(deps: {
   router.post(
     '/applications/:id/review/schedule-site-visit',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const app = deps.reviewService.scheduleSiteVisit(req.params.id, req.user!.id);
       res.json(respond(deps, app, req.user!.role));
     }),
@@ -72,7 +72,7 @@ export function buildReviewRoutes(deps: {
   router.post(
     '/applications/:id/review/reject',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = rejectSchema.parse(req.body);
       const app = deps.reviewService.reject(req.params.id, req.user!.id, input.reason);
       res.json(respond(deps, app, req.user!.role));
@@ -82,7 +82,7 @@ export function buildReviewRoutes(deps: {
   router.post(
     '/applications/:id/review/approve',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const app = deps.reviewService.approve(req.params.id, req.user!.id);
       res.json(respond(deps, app, req.user!.role));
     }),
@@ -91,7 +91,7 @@ export function buildReviewRoutes(deps: {
   router.post(
     '/feedback/:feedbackId/resolve',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const feedback = deps.reviewService.resolveFeedback(req.params.feedbackId, req.user!.id);
       res.json(feedback);
     }),

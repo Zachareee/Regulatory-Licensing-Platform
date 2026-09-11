@@ -32,7 +32,7 @@ This is a **backend API + test suite**, not a full-stack app. No frontend UI.
 | AI document verification | Deterministic mock (hash-based pass/flag, tests use fixed content to hit both outcomes) | No real ML model is in scope; what matters is that the "AI verification result visible per document" contract is real and testable. |
 | Notifications | Logged as domain events, not emailed/pushed | Same reasoning as auth — the trigger logic is real, the delivery channel isn't. |
 | Licence-type-specific checklist/section schemas | Single fixed set of sections/checklist shape | Multi-licence-type schema config is a real feature but orthogonal to the workflow logic being assessed. |
-| Persistence | In-memory repositories behind a `Repository` interface | Keeps the submission trivially runnable (`npm install && npm test`, no DB setup) while keeping the seam to swap in Postgres/Prisma clean — the service layer never touches storage directly. |
+| Persistence | In-memory repositories behind a `Repository` interface | Keeps the submission trivially runnable (`deno install && deno test`, no DB setup) while keeping the seam to swap in Postgres/Prisma clean — the service layer never touches storage directly. |
 | Pagination / search / rate limiting | Not implemented | Not core to the workflow being assessed; noted in "What I'd do next." |
 
 ## Assumptions made where requirements were ambiguous
@@ -77,7 +77,3 @@ per route, so it can't be forgotten on a new endpoint. Tests are Jest +
 Supertest, split into unit tests (domain/service logic, including the edge
 cases from the PRD) and integration tests (full HTTP round-trips, including
 the role-leak edge cases).
-
-## AI Usage
-
-See the "AI Usage" section in `README.md`.

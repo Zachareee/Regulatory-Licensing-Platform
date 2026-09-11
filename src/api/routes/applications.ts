@@ -39,7 +39,7 @@ export function buildApplicationRoutes(deps: {
   router.post(
     '/',
     requireRole('OPERATOR'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = createApplicationSchema.parse(req.body);
       // Cast is safe: zod's z.enum(SECTION_IDS) record guarantees keys are
       // valid SectionIds; the applicationService still re-validates
@@ -55,7 +55,7 @@ export function buildApplicationRoutes(deps: {
 
   router.get(
     '/',
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const apps = deps.applicationService.listForRequester(req.user!);
       const views = apps.map((app) => {
         const documents = deps.documentService.listForApplication(app.id);
@@ -68,7 +68,7 @@ export function buildApplicationRoutes(deps: {
 
   router.get(
     '/:id',
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const app = deps.applicationService.getForRequester(req.params.id, req.user!);
       const documents = deps.documentService.listForApplication(app.id);
       const feedback = deps.reviewService.listFeedback(app.id);
@@ -79,7 +79,7 @@ export function buildApplicationRoutes(deps: {
   router.patch(
     '/:id/sections',
     requireRole('OPERATOR'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = resubmitSchema.parse(req.body);
       const app = deps.applicationService.resubmitSections({
         applicationId: req.params.id,
@@ -96,7 +96,7 @@ export function buildApplicationRoutes(deps: {
   router.post(
     '/:id/documents',
     requireRole('OPERATOR'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const input = uploadDocumentSchema.parse(req.body);
       // Ownership check: operators may only upload to their own application.
       deps.applicationService.getForRequester(req.params.id, req.user!);
@@ -111,7 +111,7 @@ export function buildApplicationRoutes(deps: {
   router.get(
     '/:id/compare',
     requireRole('OFFICER'),
-    asyncHandler(async (req: AuthedRequest, res) => {
+    asyncHandler((req: AuthedRequest, res) => {
       const from = Number(req.query.from);
       const to = Number(req.query.to);
       if (!Number.isInteger(from) || !Number.isInteger(to)) {
